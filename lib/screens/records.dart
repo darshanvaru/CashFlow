@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cashflow/widgets/BuildDateSection.dart';
 import 'package:cashflow/widgets/BuildRecordSection.dart';
 
+import 'addExpence.dart';
+
 class Records extends StatefulWidget {
 
   const Records({super.key});
@@ -180,10 +182,20 @@ class RecordsState extends State<Records> {
 
       //BOTTOMNAVBAR
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => AddExpenseScreen()),
+          );
+        },
         backgroundColor: Colors.teal,
-        child: const Icon(Icons.add, color: Colors.white, size: 40,),
+        child: const Icon(
+          Icons.add,
+          color: Colors.white,
+          size: 40,
+        ),
       ),
+
     );
   }
 }

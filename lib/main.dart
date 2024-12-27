@@ -5,6 +5,8 @@ import 'package:cashflow/screens/categories.dart';
 import 'package:cashflow/screens/records.dart';
 import 'package:flutter/material.dart';
 
+import 'AdminControl.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -53,11 +55,61 @@ class _MainState extends State<Main> {
       appBar: AppBar(
         backgroundColor: Colors.teal,
         title: const Text('CashFlow'),
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () {},
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () {
+              Scaffold.of(context).openDrawer();
+            },
+          ),
         ),
       ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Colors.teal),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'CashFlow',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Manage your finances',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings, color: Colors.teal),
+              title: const Text('Admin Control'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const AdminControl()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.home, color: Colors.teal),
+              title: const Text('Home'),
+              onTap: () {
+                Navigator.of(context).pop(); // Close the drawer and return to home
+              },
+            ),
+          ],
+        ),
+      ),
+
 
       //Body with dynamic pages
       body: _pages[_selectedIndex],
