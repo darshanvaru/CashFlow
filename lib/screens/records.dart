@@ -185,7 +185,7 @@ class RecordsState extends State<Records> {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => AddExpenseScreen()),
+            MaterialPageRoute(builder: (context) => const AddExpenseScreen()),
           );
         },
         backgroundColor: Colors.teal,

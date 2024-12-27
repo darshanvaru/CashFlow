@@ -18,7 +18,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   DateTime selectedDate = DateTime.now();
   TimeOfDay selectedTime = TimeOfDay.now();
 
-  // Handles button press on calculator
+  // Handles any button press on calculator
   void buttonPressed(String value) {
     setState(() {
       // If a calculation is completed and a new number is pressed
