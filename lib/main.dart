@@ -4,7 +4,6 @@ import 'package:cashflow/screens/budget.dart';
 import 'package:cashflow/screens/categories.dart';
 import 'package:cashflow/screens/records.dart';
 import 'package:flutter/material.dart';
-
 import 'AdminControl.dart';
 
 void main() {
@@ -16,9 +15,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Main(),
+      theme: ThemeData(
+        primarySwatch: Colors.teal,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: const Main(),
     );
   }
 }
@@ -34,11 +37,11 @@ class _MainState extends State<Main> {
   int _selectedIndex = 0;
 
   final List<Widget> _pages = [
-    const Records(), // Records Screen
-    const Analysis(), // Analysis Screen
-    const Budget(), // Budgets Screen
-    const Accounts(), // Accounts Screen
-    const Categories(), // Categories Screen
+    const Records(),
+    const Analysis(),
+    const Budget(),
+    const Accounts(),
+    const Categories(),
   ];
 
   void _onItemTapped(int index) {
@@ -50,14 +53,13 @@ class _MainState extends State<Main> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-
-      //Global Appbar for all Screen
       appBar: AppBar(
         backgroundColor: Colors.teal,
         title: const Text('CashFlow'),
         leading: Builder(
           builder: (context) => IconButton(
             icon: const Icon(Icons.menu),
+            tooltip: 'Open Menu',
             onPressed: () {
               Scaffold.of(context).openDrawer();
             },
@@ -103,20 +105,17 @@ class _MainState extends State<Main> {
               leading: const Icon(Icons.home, color: Colors.teal),
               title: const Text('Home'),
               onTap: () {
-                Navigator.of(context).pop(); // Close the drawer and return to home
+                Navigator.of(context).pop();
               },
             ),
           ],
         ),
       ),
-
-
-      //Body with dynamic pages
-      body: _pages[_selectedIndex],
-
-      //Global Bottom nav bar for all screen
+      body: _pages.isNotEmpty && _selectedIndex < _pages.length
+          ? _pages[_selectedIndex]
+          : _pages[1],
       bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed, // Prevent the enlarging effect
+        type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.black,
         unselectedItemColor: Colors.black,
         showSelectedLabels: true,
@@ -134,7 +133,7 @@ class _MainState extends State<Main> {
           ),
           BottomNavigationBarItem(
             icon: Icon(
-              _selectedIndex == 1 ? Icons.account_balance_wallet : Icons.account_balance_wallet_outlined,
+              _selectedIndex == 1 ? Icons.insert_chart : Icons.insert_chart_outlined,
               color: Colors.teal,
               size: 35,
             ),
@@ -142,7 +141,7 @@ class _MainState extends State<Main> {
           ),
           BottomNavigationBarItem(
             icon: Icon(
-              _selectedIndex == 2 ? Icons.account_balance_wallet : Icons.account_balance_wallet_outlined,
+              _selectedIndex == 2 ? Icons.savings : Icons.savings_outlined,
               color: Colors.teal,
               size: 35,
             ),
