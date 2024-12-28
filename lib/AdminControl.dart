@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/DatabaseService.dart';
 
 class AdminControl extends StatefulWidget {
-  const AdminControl({Key? key}) : super(key: key);
+  const AdminControl({super.key});
 
   @override
   State<AdminControl> createState() => _AdminControlState();
@@ -42,12 +42,16 @@ class _AdminControlState extends State<AdminControl> {
     final db = await DatabaseService.instance.database;
     try {
       final data = await db!.query(selectedTable!);
+      print("-----------------------------------------");
       print("Fetched Data from $selectedTable: $data");
+      print("-----------------------------------------");
       setState(() {
         tableData = data;
       });
     } catch (e) {
+      print("-----------------------------------------");
       print("Error fetching data from $selectedTable: $e");
+      print("-----------------------------------------");
       setState(() {
         tableData = [];
       });
