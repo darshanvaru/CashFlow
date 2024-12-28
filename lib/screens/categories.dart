@@ -17,20 +17,15 @@ class _CategoriesState extends State<Categories> {
     fetchCategories();
   }
 
-  // Fetch categories from the database
   Future<void> fetchCategories() async {
     final db = await DatabaseService.instance.database;
-
-    // Fetch all categories
     final allCategories = await db!.query('categories');
 
-    // Separate categories into income and expense
     final incomeCategories =
     allCategories.where((category) => category['type'] == 'income').toList();
     final expenseCategories =
     allCategories.where((category) => category['type'] == 'expense').toList();
 
-    // Update state
     setState(() {
       categories = [
         {'label': 'Income', 'items': incomeCategories},
@@ -39,22 +34,27 @@ class _CategoriesState extends State<Categories> {
     });
   }
 
-  // Add new category to the database from Pop Up Widget
   Future<void> addCategory(String name, String type) async {
     final db = await DatabaseService.instance.database;
-
-    // Insert new category
     await db!.insert('categories', {
       'name': name,
       'type': type,
       'created_at': DateTime.now().toIso8601String(),
     });
-
-    // Refresh list
     fetchCategories();
   }
 
-  // Pop Up Menu
+  Future<void> editCategory(int categorie_id, String newName) async {
+    final db = await DatabaseService.instance.database;
+    await db!.update(
+      'categories',
+      {'name': newName},
+      where: 'categorie_id = ?',
+      whereArgs: [categorie_id],
+    );
+    fetchCategories();
+  }
+
   void _showAddCategoryDialog() {
     final nameController = TextEditingController();
     String selectedType = 'income';
@@ -64,52 +64,86 @@ class _CategoriesState extends State<Categories> {
       builder: (context) {
         return StatefulBuilder(builder: (context, setDialogState) {
           return AlertDialog(
-            title: const Text("Add New Category"),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
+            title: const Text(
+              "Add New Category",
+              style: TextStyle(
+                color: Colors.teal,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Category Name Input Field
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Category Name',
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Category Name',
+                      labelStyle: const TextStyle(color: Colors.teal),
+                      focusedBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.teal),
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 15),
-                // Category Type Dropdown
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    const Text("Type: ", style: TextStyle(fontSize: 18)),
-                    DropdownButton<String>(
-                      value: selectedType,
-                      onChanged: (String? newValue) {
+                    TextButton(
+                      onPressed: () {
                         setDialogState(() {
-                          selectedType = newValue!;
+                          selectedType = 'income';
                         });
                       },
-                      items: <String>['income', 'expense']
-                          .map<DropdownMenuItem<String>>((String value) {
-                        return DropdownMenuItem<String>(
-                          value: value,
-                          child: Text(
-                            value[0].toUpperCase() + value.substring(1),
-                          ),
-                        );
-                      }).toList(),
+                      child: Text(
+                        'Income',
+                        style: TextStyle(
+                          color: selectedType == 'income' ? Colors.teal : Colors.grey,
+                          fontWeight: selectedType == 'income'
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setDialogState(() {
+                          selectedType = 'expense';
+                        });
+                      },
+                      child: Text(
+                        'Expense',
+                        style: TextStyle(
+                          color: selectedType == 'expense' ? Colors.teal : Colors.grey,
+                          fontWeight: selectedType == 'expense'
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ],
             ),
             actions: [
-              // Cancel Button
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop();
                 },
-                child: const Text('Cancel'),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.teal),
+                ),
               ),
-              // Submit Button
               ElevatedButton(
                 onPressed: () {
                   final categoryName = nameController.text.trim();
@@ -121,6 +155,12 @@ class _CategoriesState extends State<Categories> {
                     );
                   }
                 },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
                 child: const Text('Add'),
               ),
             ],
@@ -130,42 +170,112 @@ class _CategoriesState extends State<Categories> {
     );
   }
 
+  void _showEditCategoryDialog(int categorie_id, String currentName) {
+    final nameController = TextEditingController(text: currentName);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Edit Category"),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(labelText: 'Category Name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final newName = nameController.text.trim();
+                if (newName.isNotEmpty) {
+                  editCategory(categorie_id, newName);
+                  Navigator.of(context).pop();
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> deleteCategory(int categorie_id) async {
+    final db = await DatabaseService.instance.database;
+    var debug = await db!.delete(
+      'categories',
+      where: 'categorie_id = ?',
+      whereArgs: [categorie_id],
+    );
+    SnackBar(
+      content: Text("$debug Category deleted"),
+    );
+    fetchCategories();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: categories.isEmpty
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-        itemCount: categories.length,
-        itemBuilder: (context, index) {
-          final categoryGroup = categories[index];
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(
-                  "${categoryGroup['label']} Categories",
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal,
+          : Padding(
+        padding: const EdgeInsets.only(top: 8.0),
+        child: ListView.builder(
+          itemCount: categories.length,
+          itemBuilder: (context, index) {
+            final categoryGroup = categories[index];
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    "${categoryGroup['label']} Categories",
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal,
+                    ),
                   ),
                 ),
-              ),
-              const Divider(color: Colors.teal, thickness: 1.5),
-              ...categoryGroup['items'].map<Widget>((item) {
-                return ListTile(
-                  leading: const Icon(Icons.category,
-                      color: Colors.teal, size: 38),
-                  title: Text(item['name']),
-                  subtitle: Text(item['type']),
-                );
-              }).toList(),
-            ],
-          );
-        },
+                const Divider(color: Colors.teal, thickness: 1.5),
+                ...categoryGroup['items'].map<Widget>((item) {
+                  return ListTile(
+                    leading: const Icon(Icons.category, color: Colors.teal, size: 38),
+                    title: Text(item['name']),
+                    subtitle: Text(item['type']),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          _showEditCategoryDialog(item['categorie_id'], item['name']);
+                        } else if (value == 'delete') {
+
+                          print("----------------------");
+                          print(item['categorie_id']);
+                          print("----------------------");
+                          deleteCategory(item['categorie_id']);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Edit'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            );
+          },
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: Padding(
@@ -174,7 +284,14 @@ class _CategoriesState extends State<Categories> {
           onPressed: _showAddCategoryDialog,
           backgroundColor: Colors.teal,
           icon: const Icon(Icons.add, color: Colors.white, size: 38),
-          label: const Text("Add New Category", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          label: const Text(
+            "Add New Category",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
         ),
       ),
     );

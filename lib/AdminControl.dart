@@ -100,19 +100,13 @@ class _AdminControlState extends State<AdminControl> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ...List.generate(columnNames.length, (index) {
-                    // Check if the column is 'created_at' and fill it with the current timestamp
-                    if (columnNames[index] == 'created_at') {
-                      fieldControllers[index].text = DateTime.now().toString(); // Fill with current timestamp
-                      return Container(); // Do not show the input field for created_at
-                    } else {
-                      return TextField(
+                    return TextField(
                         controller: fieldControllers[index],
                         decoration: InputDecoration(
                           labelText: columnNames[index],
                         ),
                       );
-                    }
-                  }),
+                    }),
                 ],
               ),
               actions: [
