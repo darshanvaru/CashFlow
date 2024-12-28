@@ -4,7 +4,7 @@ import '../services/DatabaseService.dart';
 class CategoryPanel extends StatefulWidget {
   final String transactionType;
 
-  const CategoryPanel({Key? key, required this.transactionType}) : super(key: key);
+  const CategoryPanel({super.key, required this.transactionType});
 
   @override
   _CategoryPanelState createState() => _CategoryPanelState();
