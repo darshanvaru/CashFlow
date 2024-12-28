@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/AccountPanel.dart';
+import '../widgets/CategoryPanel.dart';
+
 class AddExpenseScreen extends StatefulWidget {
   const AddExpenseScreen({super.key});
 
@@ -17,6 +20,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final TextEditingController noteController = TextEditingController();
   DateTime selectedDate = DateTime.now();
   TimeOfDay selectedTime = TimeOfDay.now();
+  String selectedCategory = 'Category';
+  String selectedAccount = 'Account';
 
   // Handles any button press on calculator
   void buttonPressed(String value) {
@@ -111,7 +116,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final period = time.period == DayPeriod.am ? 'AM' : 'PM';
     return "$hour:$minute $period";
   }
-
   String _getMonthName(int month) {
     const monthNames = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -119,6 +123,41 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     ];
     return monthNames[month - 1];
   }
+
+  //Panel for category selection
+  Future<void> _showCategoryPanel() async {
+    final category = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return CategoryPanel(transactionType: transactionType.toLowerCase(),);
+      },
+    );
+
+    if (category != null) {
+      setState(() {
+        selectedCategory = category['name'];
+      });
+    }
+  }
+
+  //Panel for account selection
+  Future<void> _showAccountPanel() async {
+    final account = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return const AccountPanel();
+      },
+    );
+
+    if (account != null) {
+      setState(() {
+        selectedAccount = account['name'];
+      });
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -200,11 +239,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _buildSelectionContainer("Account", Icons.credit_card, "Card"),
+                    child: _buildSelectionContainer("Account", Icons.credit_card),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: _buildSelectionContainer("Category", Icons.shopping_cart, "Shopping"),
+                    child: _buildSelectionContainer("Category", Icons.shopping_cart),
                   ),
                 ],
               ),
@@ -219,13 +258,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.teal, width: 2),
                 ),
-                child: TextField(
-                  controller: noteController,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'Add note...',
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width,
                   ),
-                  maxLines: 6,
+                  child: TextField(
+                    controller: noteController,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: 'Add note...',
+                    ),
+                    maxLines: 6,
+                  ),
                 ),
               ),
 
@@ -310,6 +354,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+
+                    //Date Widget
                     Expanded(
                       child: Center(
                         child: GestureDetector(
@@ -317,8 +363,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             final picked = await showDatePicker(
                               context: context,
                               initialDate: selectedDate,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2025),
+                              firstDate: DateTime.now().subtract(const Duration(days: 2920)),
+                              lastDate: DateTime.now().add(const Duration(days: 3285)),
                             );
                             if (picked != null) {
                               setState(() {
@@ -326,13 +372,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                               });
                             }
                           },
-                          child: Text(formatDate(selectedDate), style: TextStyle(fontSize: 20)),
+                          child: Text(formatDate(selectedDate), style: const TextStyle(fontSize: 20)),
                         ),
                       ),
                     ),
+
                     const SizedBox(width: 16),
                     const Text("  |  ", style: TextStyle(fontSize: 30),),
                     const SizedBox(width: 16),
+
+                    //Time Widget
                     Expanded(
                       child: Center(
                         child: GestureDetector(
@@ -347,7 +396,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                               });
                             }
                           },
-                          child: Text(formatTime(selectedTime), style: TextStyle(fontSize: 20)),
+                          child: Text(formatTime(selectedTime), style: const TextStyle(fontSize: 20)),
                         ),
                       ),
                     ),
@@ -361,17 +410,20 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 
+
+  // Wudget for Modularization of code
   Widget _buildTransactionTypeButton(String type) {
     return GestureDetector(
       onTap: () {
         setState(() {
           transactionType = type;
+          selectedCategory = 'category';
         });
       },
       child: Row(
         children: [
           if (transactionType == type)
-            Icon(Icons.check_circle, size: 28, color: Colors.teal),
+            const Icon(Icons.check_circle, size: 28, color: Colors.teal),
           Text(
             ' $type',
             style: TextStyle(
@@ -385,24 +437,31 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 
-  Widget _buildSelectionContainer(String title, IconData icon, String text) {
+  Widget _buildSelectionContainer(String title, IconData icon) {
     return Column(
       children: [
         Text(title, style: const TextStyle(fontSize: 18)),
         const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.teal, width: 2),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: Colors.blue),
-              const SizedBox(width: 8),
-              Text(text, style: const TextStyle(fontSize: 20)),
-            ],
+        GestureDetector(
+          onTap: title == 'Category'
+              ? _showCategoryPanel
+              : _showAccountPanel,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.teal, width: 2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: Colors.teal, size: 30),
+                const SizedBox(width: 8),
+                title == 'Category'
+                ?Text(selectedCategory, style: const TextStyle(fontSize: 20))
+                :Text(selectedAccount, style: const TextStyle(fontSize: 20)),
+              ],
+            ),
           ),
         ),
       ],

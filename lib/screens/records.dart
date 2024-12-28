@@ -1,4 +1,4 @@
-import 'package:cashflow/services/DatabaseService.dart';
+// import 'package:cashflow/services/DatabaseService.dart';
 import 'package:flutter/material.dart';
 import 'package:cashflow/widgets/BuildDateSection.dart';
 import 'package:cashflow/widgets/BuildRecordSection.dart';
@@ -15,7 +15,7 @@ class Records extends StatefulWidget {
 
 class RecordsState extends State<Records> {
 
-  final DatabaseService _db = DatabaseService.instance;
+  // final DatabaseService _db = DatabaseService.instance;
 
   //data
   final List<Map<String, dynamic>> transactions = <Map<String, dynamic>>[
