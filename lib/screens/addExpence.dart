@@ -1,7 +1,6 @@
-import 'dart:developer';
-
 import 'package:flutter/material.dart';
 
+import '../services/DatabaseService.dart';
 import '../widgets/AccountPanel.dart';
 import '../widgets/CategoryPanel.dart';
 
@@ -21,8 +20,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   String transactionType = 'EXPENSE';
   bool shouldResetDisplay = false;
   bool calculationCompleted = false;
+  bool _isLoading = false;
   DateTime selectedDate = DateTime.now();
   TimeOfDay selectedTime = TimeOfDay.now();
+  int selectedCategoryId = 1;
+  int fromAccountId = 1;
+  int toAccountId = 1;
   String selectedCategory = 'Category';
   String selectedAccount = 'Account';
   String transferAccount = 'Account';
@@ -158,6 +161,15 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     ];
     return monthNames[month - 1];
   }
+  // Database date format
+  String _formatDateForDb(DateTime date) {
+    return "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+  }
+  String _formatTimeForDb(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return "$hour:$minute";
+  }
 
   // panel for showing category names
   Future<void> _showCategoryPanel() async {
@@ -170,9 +182,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         },
       );
 
-      if (category != null && category.containsKey('name')) {
+      if (category != null && category.containsKey('name') && category.containsKey('categorie_id')) {
         setState(() {
-          selectedCategory = category['name'];
+          selectedCategory = category['name'] as String;
+          selectedCategoryId = category['categorie_id'] as int;
         });
       }
     } catch (e) {
@@ -191,16 +204,19 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         },
       );
 
-      if (account != null && account.containsKey('name')) {
+      if (account != null && account.containsKey('name') && account.containsKey('account_id')) {
         setState(() {
           if (transactionType.toLowerCase() == 'transfer') {
             if (isFrom) {
-              selectedAccount = account['name'];
+              selectedAccount = account['name'] as String;
+              fromAccountId = account['account_id'] as int;
             } else {
-              transferAccount = account['name'];
+              transferAccount = account['name'] as String;
+              toAccountId = account['account_id'] as int;
             }
           } else {
-            selectedAccount = account['name'];
+            selectedAccount = account['name'] as String;
+            fromAccountId = account['account_id'] as int;
           }
         });
       }
@@ -215,6 +231,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       _showError('Please enter an amount');
       return false;
     }
+
+    try {
+      double.parse(displayController.text);
+    } catch (e) {
+      _showError('Invalid amount');
+      return false;
+    }
+
     if (selectedCategory == 'Category' && transactionType.toLowerCase() != 'transfer') {
       _showError('Please select a category');
       return false;
@@ -223,137 +247,420 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       _showError('Please select an account');
       return false;
     }
-    if (transactionType.toLowerCase() == 'transfer' && transferAccount == 'Account') {
-      _showError('Please select transfer to account');
-      return false;
-    }
-    if (transactionType.toLowerCase() == 'transfer' &&
-        selectedAccount == transferAccount) {
-      _showError('Transfer accounts must be different');
-      return false;
+    if (transactionType.toLowerCase() == 'transfer') {
+      if (transferAccount == 'Account') {
+        _showError('Please select transfer to account');
+        return false;
+      }
+      if (selectedAccount == transferAccount) {
+        _showError('Transfer accounts must be different');
+        return false;
+      }
     }
     return true;
   }
 
+  // method to add field into database
+  Future<void> _addRecords() async {
+    try {
+      setState(() => _isLoading = true);
+
+      final amount = double.parse(displayController.text);
+      final description = noteController.text;
+      final date = _formatDateForDb(selectedDate);
+      final time = _formatTimeForDb(selectedTime);
+      final dbService = DatabaseService.instance;
+
+      // Create a map of the record to insert
+      final record = {
+        'amount': amount,
+        'description': description,
+        'category_id': selectedCategoryId,
+        'account_id': fromAccountId,
+        'date': date,
+        'time': time,
+      };
+
+      // If it's a transfer, handle both accounts
+      if (transactionType.toLowerCase() == 'transfer') {
+        // Get current balances
+        final fromAccountData = await dbService.query(
+          'account',
+          where: 'account_id = ?',
+          whereArgs: [fromAccountId],
+        );
+        final toAccountData = await dbService.query(
+          'account',
+          where: 'account_id = ?',
+          whereArgs: [toAccountId],
+        );
+
+        if (fromAccountData.isEmpty || toAccountData.isEmpty) {
+          throw Exception('Account not found');
+        }
+
+        double fromAccountBalance = fromAccountData.first['balance'] as double;
+        double toAccountBalance = toAccountData.first['balance'] as double;
+
+        // Check if source account has sufficient balance
+        if (fromAccountBalance < amount) {
+          throw Exception('Insufficient balance in source account');
+        }
+
+        // Update source account balance
+        await dbService.update(
+          'account',
+          {'balance': fromAccountBalance - amount},
+          where: 'account_id = ?',
+          whereArgs: [fromAccountId],
+        );
+
+        // Update destination account balance
+        await dbService.update(
+          'account',
+          {'balance': toAccountBalance + amount},
+          where: 'account_id = ?',
+          whereArgs: [toAccountId],
+        );
+
+        // Create debit record
+        final debitRecord = {
+          ...record,
+          'amount': -amount,
+          'description': 'Transfer to ${transferAccount}: ${description}',
+          'account_id': fromAccountId,
+        };
+
+        // Create credit record
+        final creditRecord = {
+          ...record,
+          'description': 'Transfer from ${selectedAccount}: ${description}',
+          'account_id': toAccountId,
+        };
+
+        // Insert both records
+        final debitId = await dbService.insert('records', debitRecord);
+        final creditId = await dbService.insert('records', creditRecord);
+
+        if (debitId <= 0 || creditId <= 0) {
+          throw Exception('Failed to save transfer records');
+        }
+      } else {
+        // Handle income or expense
+        final accountData = await dbService.query(
+          'account',
+          where: 'account_id = ?',
+          whereArgs: [fromAccountId],
+        );
+
+        if (accountData.isEmpty) {
+          throw Exception('Account not found');
+        }
+
+        double currentBalance = accountData.first['balance'] as double;
+        double finalAmount;
+
+        if (transactionType.toLowerCase() == 'income') {
+          finalAmount = amount;
+          // Update account balance for income
+          await dbService.update(
+            'account',
+            {'balance': currentBalance + amount},
+            where: 'account_id = ?',
+            whereArgs: [fromAccountId],
+          );
+        } else { // expense
+          finalAmount = -amount;
+          // Check if account has sufficient balance
+          if (currentBalance < amount) {
+            throw Exception('Insufficient balance for expense');
+          }
+          // Update account balance for expense
+          await dbService.update(
+            'account',
+            {'balance': currentBalance - amount},
+            where: 'account_id = ?',
+            whereArgs: [fromAccountId],
+          );
+        }
+
+        // Update the amount in the record
+        record['amount'] = finalAmount;
+
+        // Insert the record
+        final recordId = await dbService.insert('records', record);
+
+        if (recordId <= 0) {
+          throw Exception('Failed to save record');
+        }
+      }
+
+      Navigator.pop(context);
+    } catch (e) {
+      _showError('Error saving record: ${e.toString()}');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-
-              //Top Bar (Cancle, save)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Row(
+                  // Top Bar (Cancel, save)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      //cancle button
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.close, color: Colors.teal, size: 30),
+                            SizedBox(width: 5),
+                            Text(
+                              'CANCEL',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.teal,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      //save button
+                      TextButton(
+                        onPressed: _isLoading ? null : () {
+                          if (_validateForm()) {
+                            _addRecords();
+                          }
+                        },
+                        child: const Row(
+                          children: [
+                            Icon(Icons.check, color: Colors.teal, size: 30),
+                            SizedBox(width: 5),
+                            Text(
+                              'SAVE',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.teal,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // transaction type selector
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildTransactionTypeButton('INCOME'),
+                      const SizedBox(width: 10),
+                      const Text(" | ", style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 10),
+                      _buildTransactionTypeButton('EXPENSE'),
+                      const SizedBox(width: 10),
+                      const Text(" | ", style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 10),
+                      _buildTransactionTypeButton('TRANSFER'),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Account and category selectors
+                  Row(
+                    children: [
+                      Expanded(
+                        child: transactionType.toLowerCase() == 'transfer'
+                            ? _buildSelectionContainer("From", Icons.credit_card, isFrom: true)
+                            : _buildSelectionContainer("Account", Icons.credit_card),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: transactionType.toLowerCase() == 'transfer'
+                            ? _buildSelectionContainer("To", Icons.credit_card, isFrom: false)
+                            : _buildSelectionContainer("Category", Icons.shopping_cart),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Note for record
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0x83E6DEFF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.teal, width: 2),
+                    ),
+                    child: TextField(
+                      controller: noteController,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        hintText: 'Add note...',
+                      ),
+                      maxLines: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // text field for amount display
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.teal, width: 2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
                       children: [
-                        Icon(Icons.close, color: Colors.teal, size: 30),
-                        SizedBox(width: 5),
                         Text(
-                          'CANCEL',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.teal,
+                          operator,
+                          style: const TextStyle(
+                            fontSize: 25,
                             fontWeight: FontWeight.bold,
+                            color: Colors.teal,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: displayController,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.teal,
+                            ),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                            ),
+                            readOnly: true,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.backspace_outlined, color: Colors.teal),
+                          onPressed: () {
+                            setState(() {
+                              if (displayController.text.isNotEmpty) {
+                                displayController.text = displayController.text.substring(
+                                  0,
+                                  displayController.text.length - 1,
+                                );
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Calculator
+                  Expanded(
+                    child: GridView.builder(
+                      padding: const EdgeInsets.only(top: 16),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        childAspectRatio: 1.5,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
+                      itemCount: 16,
+                      itemBuilder: (context, index) {
+                        final buttonLabels = [
+                          '+', '7', '8', '9',
+                          '-', '4', '5', '6',
+                          'x', '1', '2', '3',
+                          '/', '0', '.', '='
+                        ];
+                        return _buildCalculatorButton(buttonLabels[index]);
+                      },
+                    ),
+                  ),
+
+                  // date and time
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Center(
+                            child: GestureDetector(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: selectedDate,
+                                  firstDate: DateTime.now().subtract(const Duration(days: 2920)),
+                                  lastDate: DateTime.now().add(const Duration(days: 3285)),
+                                );
+
+                                if (picked != null) {
+                                  setState(() {
+                                    selectedDate = picked;
+                                  });
+                                }
+                              },
+                              child: Text(
+                                formatDate(selectedDate),
+                                style: const TextStyle(fontSize: 20),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        const Text(
+                          "  |  ",
+                          style: TextStyle(fontSize: 30),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Center(
+                            child: GestureDetector(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: selectedTime,
+                                );
+                                if (picked != null) {
+                                  setState(() {
+                                    selectedTime = picked;
+                                  });
+                                }
+                              },
+                              child: Text(
+                                formatTime(selectedTime),
+                                style: const TextStyle(fontSize: 20),
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      if (_validateForm()) {
-                        // Implement save logic here
-                        Navigator.pop(context);
-                      }
-                    },
-                    child: const Row(
-                      children: [
-                        Icon(Icons.check, color: Colors.teal, size: 30),
-                        SizedBox(width: 5),
-                        Text(
-                          'SAVE',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.teal,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
+            ),
 
-              // transaction type selector
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                    _buildTransactionTypeButton('INCOME'),
-                    const SizedBox(width: 10),
-                    const Text(" | ", style: TextStyle(fontSize: 20)),
-                    const SizedBox(width: 10),
-                    _buildTransactionTypeButton('EXPENSE'),
-                    const SizedBox(width: 10),
-                    const Text(" | ", style: TextStyle(fontSize: 20)),
-                    const SizedBox(width: 10),
-                    _buildTransactionTypeButton('TRANSFER'),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              //Account and category selectors
-              Row(
-                children: [
-                  Expanded(
-                    child: transactionType.toLowerCase() == 'transfer'
-                        ? _buildSelectionContainer("From", Icons.credit_card, isFrom: true)
-                        : _buildSelectionContainer("Account", Icons.credit_card),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: transactionType.toLowerCase() == 'transfer'
-                        ? _buildSelectionContainer("To", Icons.credit_card, isFrom: false)
-                        : _buildSelectionContainer("Category", Icons.shopping_cart),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              //Note for record
+            //if content is loading
+            if (_isLoading)
               Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0x83E6DEFF),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.teal, width: 2),
-                ),
-                child: TextField(
-                  controller: noteController,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'Add note...',
-                  ),
-                  maxLines: 6,
+                color: Colors.black.withOpacity(0.3),
+                child: const Center(
+                  child: CircularProgressIndicator(),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              //text field for amount display
-              _buildAmountDisplay(),
-
-              //Calculator
-              _buildCalculator(),
-
-              //date and time
-              _buildDateTimeSelector(),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -361,26 +668,26 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   Widget _buildTransactionTypeButton(String type) {
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          transactionType = type;
-          selectedCategory = 'Category';
-        });
-      },
-      child: Row(
-        children: [
-          if (transactionType == type)
-            const Icon(Icons.check_circle, size: 28, color: Colors.teal),
-          Text(
-            ' $type',
-            style: TextStyle(
-              fontSize: transactionType == type ? 17 : 14,
-              color: transactionType == type ? Colors.black : Colors.grey,
-              fontWeight: transactionType == type ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-        ],
+        onTap: () {
+          setState(() {
+            transactionType = type;
+            selectedCategory = 'Category';
+          });
+        },
+        child: Row(
+            children: [
+            if (transactionType == type)
+        const Icon(Icons.check_circle, size: 28, color: Colors.teal),
+    Text(
+    ' $type',
+      style: TextStyle(
+        fontSize: transactionType == type ? 17 : 14,
+        color: transactionType == type ? Colors.black : Colors.grey,
+        fontWeight: transactionType == type ? FontWeight.bold : FontWeight.normal,
       ),
+    ),
+            ],
+        ),
     );
   }
 
@@ -432,82 +739,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return selectedAccount;
   }
 
-  Widget _buildAmountDisplay() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.teal, width: 2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Text(
-            operator,
-            style: const TextStyle(
-              fontSize: 25,
-              fontWeight: FontWeight.bold,
-              color: Colors.teal,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: TextField(
-              controller: displayController,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal,
-              ),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-              ),
-              readOnly: true,
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.backspace_outlined, color: Colors.teal),
-            onPressed: () {
-              setState(() {
-                if (displayController.text.isNotEmpty) {
-                  displayController.text = displayController.text.substring(
-                    0,
-                    displayController.text.length - 1,
-                  );
-                }
-              });
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCalculator() {
-    return Expanded(
-      child: GridView.builder(
-        padding: const EdgeInsets.only(top: 16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 4,
-          childAspectRatio: 1.5,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-        itemCount: 16,
-        itemBuilder: (context, index) {
-          final buttonLabels = [
-            '+', '7', '8', '9',
-            '-', '4', '5', '6',
-            'x', '1', '2', '3',
-            '/', '0', '.', '='
-          ];
-          return _buildCalculatorButton(buttonLabels[index]);
-        },
-      ),
-    );
-  }
-
   Widget _buildCalculatorButton(String label) {
     return ElevatedButton(
       onPressed: () {
@@ -532,68 +763,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
           fontWeight: FontWeight.bold,
         ),
       ),
-    );
-  }
-
-  Widget _buildDateTimeSelector() {
-    return Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Center(
-                child: GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime.now().subtract(const Duration(days: 2920)),
-                      lastDate: DateTime.now().add(const Duration(days: 3285)),
-                    );
-
-                    if (picked != null) {
-                      setState(() {
-                        selectedDate = picked;
-                      });
-                    }
-                  },
-                  child: Text(
-                    formatDate(selectedDate),
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            const Text(
-              "  |  ",
-              style: TextStyle(fontSize: 30),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Center(
-                child: GestureDetector(
-                  onTap: () async {
-                    final picked = await showTimePicker(
-                      context: context,
-                      initialTime: selectedTime,
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        selectedTime = picked;
-                      });
-                    }
-                  },
-                  child: Text(
-                    formatTime(selectedTime),
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
     );
   }
 }
