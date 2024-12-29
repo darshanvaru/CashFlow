@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 
 import '../widgets/AccountPanel.dart';
@@ -11,65 +13,80 @@ class AddExpenseScreen extends StatefulWidget {
 }
 
 class _AddExpenseScreenState extends State<AddExpenseScreen> {
-  String transactionType = 'EXPENSE';
-  String display = '';
+  final TextEditingController displayController = TextEditingController();
+  final TextEditingController noteController = TextEditingController();
+
   String firstNumber = '';
   String operator = '';
+  String transactionType = 'EXPENSE';
   bool shouldResetDisplay = false;
   bool calculationCompleted = false;
-  final TextEditingController noteController = TextEditingController();
   DateTime selectedDate = DateTime.now();
   TimeOfDay selectedTime = TimeOfDay.now();
   String selectedCategory = 'Category';
   String selectedAccount = 'Account';
+  String transferAccount = 'Account';
 
-  // Handles any button press on calculator
+  // logic for calc button press
   void buttonPressed(String value) {
     setState(() {
-      // If a calculation is completed and a new number is pressed
-      if (calculationCompleted && !(value == '+' || value == '-' || value == 'x' || value == '/')) {
-        display = '';  // Clear the display
-        calculationCompleted = false;
-      }
-
-      if (value == '+' || value == '-' || value == 'x' || value == '/') {
-        calculationCompleted = false;  // Reset the flag when operator is pressed
-        if (operator.isEmpty) {
-          firstNumber = display;
-          operator = value;
-          shouldResetDisplay = true;
-          display = '';
-        } else {
-          calculate();
-          firstNumber = display;
-          operator = value;
-          shouldResetDisplay = true;
-          display = '';
-        }
+      if (_isOperator(value)) {
+        _handleOperator(value);
+      } else if (value == '.') {
+        _handleDecimalPoint();
       } else {
-        if (shouldResetDisplay) {
-          display = value;
-          shouldResetDisplay = false;
-        } else {
-          if (value == '.' && display.contains('.')) {
-            return;
-          }
-          display += value;
-        }
+        _handleNumber(value);
       }
     });
   }
+  bool _isOperator(String value) {
+    return value == '+' || value == '-' || value == 'x' || value == '/';
+  }
+  void _handleOperator(String value) {
+    calculationCompleted = false;
+    if (operator.isEmpty && displayController.text.isNotEmpty) {
+      firstNumber = displayController.text;
+      operator = value;
+      shouldResetDisplay = true;
+    } else if (displayController.text.isNotEmpty) {
+      calculate();
+      firstNumber = displayController.text;
+      operator = value;
+      shouldResetDisplay = true;
+    }
+  }
+  void _handleDecimalPoint() {
+    if (!displayController.text.contains('.')) {
+      if (shouldResetDisplay || displayController.text.isEmpty) {
+        displayController.text = '0.';
+        shouldResetDisplay = false;
+      } else {
+        displayController.text += '.';
+      }
+    }
+  }
+  void _handleNumber(String value) {
+    if (calculationCompleted) {
+      displayController.text = value;
+      calculationCompleted = false;
+    } else if (shouldResetDisplay) {
+      displayController.text = value;
+      shouldResetDisplay = false;
+    } else {
+      displayController.text += value;
+    }
+  }
 
-  // to calculate the operation
+  // Main calculation logic
   void calculate() {
-    if (firstNumber.isEmpty || operator.isEmpty || display.isEmpty) {
+    if (firstNumber.isEmpty || operator.isEmpty || displayController.text.isEmpty) {
       return;
     }
 
     setState(() {
       try {
         double num1 = double.parse(firstNumber);
-        double num2 = double.parse(display);
+        double num2 = double.parse(displayController.text);
         double result = 0;
 
         switch (operator) {
@@ -86,32 +103,50 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             if (num2 != 0) {
               result = num1 / num2;
             } else {
-              display = 'Error';
-              firstNumber = '';
-              operator = '';
+              _showError('Cannot divide by zero');
+              _resetCalculator();
               return;
             }
             break;
         }
 
-        display = result.toStringAsFixed(result.truncateToDouble() == result ? 0 : 2);
-        firstNumber = '';
-        operator = '';  // This will clear the operator after calculation
-        calculationCompleted = true;
-      } catch (e) {
-        display = 'Error';
+        displayController.text = _formatResult(result);
         firstNumber = '';
         operator = '';
+        calculationCompleted = true;
+      } catch (e) {
+        _showError('Invalid calculation');
+        _resetCalculator();
       }
     });
   }
+  void _resetCalculator() {
+    displayController.text = '';
+    firstNumber = '';
+    operator = '';
+    calculationCompleted = false;
+  }
+  String _formatResult(double result) {
+    if (result == result.truncateToDouble()) {
+      return result.toInt().toString();
+    }
+    return result.toStringAsFixed(2);
+  }
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
 
-  // Format date and time
+  // date and time format
   String formatDate(DateTime date) {
     return "${date.day} ${_getMonthName(date.month)}, ${date.year}";
   }
   String formatTime(TimeOfDay time) {
-    final hour = time.hourOfPeriod;
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
     final minute = time.minute.toString().padLeft(2, '0');
     final period = time.period == DayPeriod.am ? 'AM' : 'PM';
     return "$hour:$minute $period";
@@ -124,40 +159,81 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return monthNames[month - 1];
   }
 
-  //Panel for category selection
+  // panel for showing category names
   Future<void> _showCategoryPanel() async {
-    final category = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (BuildContext context) {
-        return CategoryPanel(transactionType: transactionType.toLowerCase(),);
-      },
-    );
+    try {
+      final category = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (BuildContext context) {
+          return CategoryPanel(transactionType: transactionType.toLowerCase());
+        },
+      );
 
-    if (category != null) {
-      setState(() {
-        selectedCategory = category['name'];
-      });
+      if (category != null && category.containsKey('name')) {
+        setState(() {
+          selectedCategory = category['name'];
+        });
+      }
+    } catch (e) {
+      _showError('Error selecting category');
     }
   }
 
-  //Panel for account selection
-  Future<void> _showAccountPanel() async {
-    final account = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (BuildContext context) {
-        return const AccountPanel();
-      },
-    );
+  // panel for showing account names
+  Future<void> _showAccountPanel({bool isFrom = true}) async {
+    try {
+      final account = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (BuildContext context) {
+          return const AccountPanel();
+        },
+      );
 
-    if (account != null) {
-      setState(() {
-        selectedAccount = account['name'];
-      });
+      if (account != null && account.containsKey('name')) {
+        setState(() {
+          if (transactionType.toLowerCase() == 'transfer') {
+            if (isFrom) {
+              selectedAccount = account['name'];
+            } else {
+              transferAccount = account['name'];
+            }
+          } else {
+            selectedAccount = account['name'];
+          }
+        });
+      }
+    } catch (e) {
+      _showError('Error selecting account');
     }
   }
 
+  // Validation before saving
+  bool _validateForm() {
+    if (displayController.text.isEmpty) {
+      _showError('Please enter an amount');
+      return false;
+    }
+    if (selectedCategory == 'Category' && transactionType.toLowerCase() != 'transfer') {
+      _showError('Please select a category');
+      return false;
+    }
+    if (selectedAccount == 'Account') {
+      _showError('Please select an account');
+      return false;
+    }
+    if (transactionType.toLowerCase() == 'transfer' && transferAccount == 'Account') {
+      _showError('Please select transfer to account');
+      return false;
+    }
+    if (transactionType.toLowerCase() == 'transfer' &&
+        selectedAccount == transferAccount) {
+      _showError('Transfer accounts must be different');
+      return false;
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -168,16 +244,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
           child: Column(
             children: [
 
-              // Top Bar
+              //Top Bar (Cancle, save)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-
-                  //canlce button
                   TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
+                    onPressed: () => Navigator.pop(context),
                     child: const Row(
                       children: [
                         Icon(Icons.close, color: Colors.teal, size: 30),
@@ -193,11 +265,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                       ],
                     ),
                   ),
-
-                  //Save Button
                   TextButton(
                     onPressed: () {
-                      // Save logic
+                      if (_validateForm()) {
+                        // Implement save logic here
+                        Navigator.pop(context);
+                      }
                     },
                     child: const Row(
                       children: [
@@ -217,40 +290,42 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 ],
               ),
 
-              // Transaction Type Selector
+              // transaction type selector
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildTransactionTypeButton('INCOME'),
-                  const SizedBox(width: 10),
-                  const Text(" | ", style: TextStyle(fontSize: 20)),
-                  const SizedBox(width: 10),
-                  _buildTransactionTypeButton('EXPENSE'),
-                  const SizedBox(width: 10),
-                  const Text(" | ", style: TextStyle(fontSize: 20)),
-                  const SizedBox(width: 10),
-                  _buildTransactionTypeButton('TRANSFER'),
+                    _buildTransactionTypeButton('INCOME'),
+                    const SizedBox(width: 10),
+                    const Text(" | ", style: TextStyle(fontSize: 20)),
+                    const SizedBox(width: 10),
+                    _buildTransactionTypeButton('EXPENSE'),
+                    const SizedBox(width: 10),
+                    const Text(" | ", style: TextStyle(fontSize: 20)),
+                    const SizedBox(width: 10),
+                    _buildTransactionTypeButton('TRANSFER'),
                 ],
               ),
-
               const SizedBox(height: 20),
 
-              // Account and Category Selection
+              //Account and category selectors
               Row(
                 children: [
                   Expanded(
-                    child: _buildSelectionContainer("Account", Icons.credit_card),
+                    child: transactionType.toLowerCase() == 'transfer'
+                        ? _buildSelectionContainer("From", Icons.credit_card, isFrom: true)
+                        : _buildSelectionContainer("Account", Icons.credit_card),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: _buildSelectionContainer("Category", Icons.shopping_cart),
+                    child: transactionType.toLowerCase() == 'transfer'
+                        ? _buildSelectionContainer("To", Icons.credit_card, isFrom: false)
+                        : _buildSelectionContainer("Category", Icons.shopping_cart),
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
 
-              // Note Input Field
+              //Note for record
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -258,151 +333,25 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.teal, width: 2),
                 ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width,
+                child: TextField(
+                  controller: noteController,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Add note...',
                   ),
-                  child: TextField(
-                    controller: noteController,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      hintText: 'Add note...',
-                    ),
-                    maxLines: 6,
-                  ),
+                  maxLines: 6,
                 ),
               ),
-
               const SizedBox(height: 16),
 
-              // Amount Display
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.teal, width: 2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    // Operator display
-                    Text(
-                      operator,
-                      style: const TextStyle(
-                        fontSize: 25,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // Amount display
-                    Expanded(
-                      child: TextField(
-                        textAlign: TextAlign.right,
-                        controller: TextEditingController(text: display),
-                        style: const TextStyle(
-                          fontSize: 25,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.teal,
-                        ),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                        ),
-                        readOnly: true,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.backspace_outlined, color: Colors.teal),
-                      onPressed: () {
-                        setState(() {
-                          if (display.isNotEmpty) {
-                            display = display.substring(0, display.length - 1);
-                          }
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
+              //text field for amount display
+              _buildAmountDisplay(),
 
-              // Calculator
-              Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.only(top: 16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    childAspectRatio: 1.5,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemCount: 16,
-                  itemBuilder: (context, index) {
-                    final buttonLabels = [
-                      '+', '7', '8', '9',
-                      '-', '4', '5', '6',
-                      'x', '1', '2', '3',
-                      '/', '0', '.', '='
-                    ];
-                    return _buildCalculatorButton(buttonLabels[index]);
-                  },
-                ),
-              ),
+              //Calculator
+              _buildCalculator(),
 
-              // Bottom Date and Time
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-
-                    //Date Widget
-                    Expanded(
-                      child: Center(
-                        child: GestureDetector(
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: selectedDate,
-                              firstDate: DateTime.now().subtract(const Duration(days: 2920)),
-                              lastDate: DateTime.now().add(const Duration(days: 3285)),
-                            );
-                            if (picked != null) {
-                              setState(() {
-                                selectedDate = picked;
-                              });
-                            }
-                          },
-                          child: Text(formatDate(selectedDate), style: const TextStyle(fontSize: 20)),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(width: 16),
-                    const Text("  |  ", style: TextStyle(fontSize: 30),),
-                    const SizedBox(width: 16),
-
-                    //Time Widget
-                    Expanded(
-                      child: Center(
-                        child: GestureDetector(
-                          onTap: () async {
-                            final picked = await showTimePicker(
-                              context: context,
-                              initialTime: selectedTime,
-                            );
-                            if (picked != null) {
-                              setState(() {
-                                selectedTime = picked;
-                              });
-                            }
-                          },
-                          child: Text(formatTime(selectedTime), style: const TextStyle(fontSize: 20)),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              //date and time
+              _buildDateTimeSelector(),
             ],
           ),
         ),
@@ -410,14 +359,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 
-
-  // Wudget for Modularization of code
   Widget _buildTransactionTypeButton(String type) {
     return GestureDetector(
       onTap: () {
         setState(() {
           transactionType = type;
-          selectedCategory = 'category';
+          selectedCategory = 'Category';
         });
       },
       child: Row(
@@ -437,15 +384,23 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 
-  Widget _buildSelectionContainer(String title, IconData icon) {
+  Widget _buildSelectionContainer(String title, IconData icon, {bool? isFrom}) {
     return Column(
       children: [
         Text(title, style: const TextStyle(fontSize: 18)),
         const SizedBox(height: 5),
         GestureDetector(
-          onTap: title == 'Category'
-              ? _showCategoryPanel
-              : _showAccountPanel,
+          onTap: () async {
+            if (title == 'Category') {
+              await _showCategoryPanel();
+            } else {
+              if (transactionType.toLowerCase() == 'transfer') {
+                await _showAccountPanel(isFrom: isFrom ?? true);
+              } else {
+                await _showAccountPanel();
+              }
+            }
+          },
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -457,14 +412,99 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               children: [
                 Icon(icon, color: Colors.teal, size: 30),
                 const SizedBox(width: 8),
-                title == 'Category'
-                ?Text(selectedCategory, style: const TextStyle(fontSize: 20))
-                :Text(selectedAccount, style: const TextStyle(fontSize: 20)),
+                Text(
+                  _getDisplayText(title, isFrom),
+                  style: const TextStyle(fontSize: 20),
+                ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  String _getDisplayText(String title, bool? isFrom) {
+    if (title == 'Category') return selectedCategory;
+    if (transactionType.toLowerCase() == 'transfer') {
+      return isFrom! ? selectedAccount : transferAccount;
+    }
+    return selectedAccount;
+  }
+
+  Widget _buildAmountDisplay() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.teal, width: 2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Text(
+            operator,
+            style: const TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.bold,
+              color: Colors.teal,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: displayController,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 25,
+                fontWeight: FontWeight.bold,
+                color: Colors.teal,
+              ),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+              ),
+              readOnly: true,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.backspace_outlined, color: Colors.teal),
+            onPressed: () {
+              setState(() {
+                if (displayController.text.isNotEmpty) {
+                  displayController.text = displayController.text.substring(
+                    0,
+                    displayController.text.length - 1,
+                  );
+                }
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalculator() {
+    return Expanded(
+      child: GridView.builder(
+        padding: const EdgeInsets.only(top: 16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          childAspectRatio: 1.5,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+        ),
+        itemCount: 16,
+        itemBuilder: (context, index) {
+          final buttonLabels = [
+            '+', '7', '8', '9',
+            '-', '4', '5', '6',
+            'x', '1', '2', '3',
+            '/', '0', '.', '='
+          ];
+          return _buildCalculatorButton(buttonLabels[index]);
+        },
+      ),
     );
   }
 
@@ -492,6 +532,68 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
           fontWeight: FontWeight.bold,
         ),
       ),
+    );
+  }
+
+  Widget _buildDateTimeSelector() {
+    return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Center(
+                child: GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now().subtract(const Duration(days: 2920)),
+                      lastDate: DateTime.now().add(const Duration(days: 3285)),
+                    );
+
+                    if (picked != null) {
+                      setState(() {
+                        selectedDate = picked;
+                      });
+                    }
+                  },
+                  child: Text(
+                    formatDate(selectedDate),
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            const Text(
+              "  |  ",
+              style: TextStyle(fontSize: 30),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Center(
+                child: GestureDetector(
+                  onTap: () async {
+                    final picked = await showTimePicker(
+                      context: context,
+                      initialTime: selectedTime,
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        selectedTime = picked;
+                      });
+                    }
+                  },
+                  child: Text(
+                    formatTime(selectedTime),
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
     );
   }
 }
