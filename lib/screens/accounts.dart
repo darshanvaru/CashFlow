@@ -158,7 +158,7 @@ class _AccountsState extends State<Accounts> {
         ),
       ),
       body: accounts.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: Text("Add Account for any transaction"))
           : ListView.builder(
         itemCount: accounts.length,
         itemBuilder: (context, index) {

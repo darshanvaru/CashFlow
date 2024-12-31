@@ -11,7 +11,6 @@ class RecordSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ...transaction['items'].asMap().entries.map<Widget>((entry) {
-          final index = entry.key;
           final item = entry.value;
 
           return Column(
@@ -29,9 +28,6 @@ class RecordSection extends StatelessWidget {
                   ),
                 ),
               ),
-              // Add a Divider after each item except the last
-              if (index != transaction['items'].length - 1)
-                const Divider(color: Colors.grey, height: 1, indent: 20, endIndent: 20),
             ],
           );
         }).toList(),
