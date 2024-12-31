@@ -6,36 +6,24 @@ class DatabaseService {
   static final DatabaseService instance = DatabaseService._constructor();
   DatabaseService._constructor();
 
-  // Lazy initialization for the database
   Future<Database?> get database async {
-    if (_db != null) return _db;
-    _db = await _getDatabase();
-    return _db!;
+    return _db ??= await _getDatabase();
   }
 
-  // Open or create the database
   Future<Database> _getDatabase() async {
-    final databaseDirPath = await getDatabasesPath();
-    final databasePath = join(databaseDirPath, "cashflow_db.db");
-    print("-------------------------------");
-    print('Database Path: ${await getDatabasesPath()}');
-    print("-------------------------------");
-
+    final databasePath = join(await getDatabasesPath(), "cashflow_db.db");
 
     return await openDatabase(
       databasePath,
       version: 1,
-      onCreate: (db, version) async {
-        // Create tables for the database schema
-        await _createTables(db);
-      },
+      onCreate: _createTables,
     );
   }
 
-  // Method to create the tables
-  Future<void> _createTables(Database db) async {
-    // records Table
-    await db.execute('''
+  Future<void> _createTables(Database db, int version) async {
+    final batch = db.batch();
+
+    batch.execute('''
       CREATE TABLE IF NOT EXISTS records (
         records_id INTEGER PRIMARY KEY,
         amount REAL,
@@ -49,8 +37,7 @@ class DatabaseService {
       )
     ''');
 
-    // Account Table
-    await db.execute('''
+    batch.execute('''
       CREATE TABLE IF NOT EXISTS account (
         account_id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
@@ -59,8 +46,7 @@ class DatabaseService {
       )
     ''');
 
-    // Categories Table
-    await db.execute('''
+    batch.execute('''
       CREATE TABLE IF NOT EXISTS categories (
         categorie_id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
@@ -69,8 +55,7 @@ class DatabaseService {
       )
     ''');
 
-    // Budget Table
-    await db.execute('''
+    batch.execute('''
       CREATE TABLE IF NOT EXISTS budget (
         budget_id INTEGER PRIMARY KEY,
         categorie_id INTEGER,
@@ -80,40 +65,80 @@ class DatabaseService {
         FOREIGN KEY (categorie_id) REFERENCES categories(categorie_id)
       )
     ''');
+
+    await batch.commit();
+
+    // Insert default data only if tables are empty
+    if ((await db.query('account')).isEmpty) {
+      await _insertDefaultAccounts(db);
+    }
+
+    if ((await db.query('categories')).isEmpty) {
+      await _insertDefaultCategories(db);
+    }
+  }
+
+  Future<void> _insertDefaultAccounts(Database db) async {
+    final timestamp = DateTime.now().toIso8601String();
+    final batch = db.batch();
+
+    for (final name in ["Card", "Cash", "Savings"]) {
+      batch.insert('account', {
+        'name': name,
+        'balance': 0.0,
+        'created_at': timestamp,
+      });
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> _insertDefaultCategories(Database db) async {
+    final timestamp = DateTime.now().toIso8601String();
+    final batch = db.batch();
+
+    for (final category in {
+      'income': [
+        "Salary", "Business", "Investments", "Gifts", "Rental Income",
+        "Savings Interest", "Freelancing", "Refunds", "Bonuses", "Other Income"
+      ],
+      'expense': [
+        "Groceries", "Rent", "Utilities", "Transport", "Education",
+        "Healthcare", "Entertainment", "Dining Out", "Shopping", "Other Expenses"
+      ]
+    }.entries) {
+      for (final name in category.value) {
+        batch.insert('categories', {
+          'name': name,
+          'type': category.key,
+          'created_at': timestamp,
+        });
+      }
+    }
+
+    await batch.commit();
   }
 
   // CRUD Operations
-
-  // Create - Returns Id of created Row
   Future<int> insert(String table, Map<String, dynamic> data) async {
-    final db = await database;
-    return await db!.insert(table, data);
+    return (await database)!.insert(table, data);
   }
 
-  // Read - Returns a list of maps (row of data)
-  Future<List<Map<String, dynamic>>> query(
-      String table, {
-        String? where,
-        List<Object?>? whereArgs,
-      }) async {
-    final db = await database;
-    return await db!.query(table, where: where, whereArgs: whereArgs);
+  Future<List<Map<String, dynamic>>> query(String table, {
+    String? where,
+    List<Object?>? whereArgs,
+  }) async {
+    return (await database)!.query(table, where: where, whereArgs: whereArgs);
   }
 
-  // Update - Returns No of affected rows
-  Future<int> update(
-      String table,
-      Map<String, dynamic> data, {
-        String? where,
-        List<Object?>? whereArgs,
-      }) async {
-    final db = await database;
-    return await db!.update(table, data, where: where, whereArgs: whereArgs);
+  Future<int> update(String table, Map<String, dynamic> data, {
+    String? where,
+    List<Object?>? whereArgs,
+  }) async {
+    return (await database)!.update(table, data, where: where, whereArgs: whereArgs);
   }
 
-  // Delete - Returns no of row deleted
   Future<int> delete(String table, {String? where, List<Object?>? whereArgs}) async {
-    final db = await database;
-    return await db!.delete(table, where: where, whereArgs: whereArgs);
+    return (await database)!.delete(table, where: where, whereArgs: whereArgs);
   }
 }
