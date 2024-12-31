@@ -1,91 +1,146 @@
-// import 'package:cashflow/services/DatabaseService.dart';
 import 'package:flutter/material.dart';
-import 'package:cashflow/widgets/BuildDateSection.dart';
 import 'package:cashflow/widgets/BuildRecordSection.dart';
-
+import '../services/DatabaseService.dart';
 import 'addExpence.dart';
 
 class Records extends StatefulWidget {
-
   const Records({super.key});
-
   @override
   State<Records> createState() => RecordsState();
 }
 
 class RecordsState extends State<Records> {
+  DateTime _selectedDate = DateTime.now();
+  Map<String, List<Map<String, dynamic>>> _groupedTransactions = {};
+  List<String> _sortedDates = [];
+  double _expense = 0.0, _income = 0.0, _total = 0.0;
 
-  // final DatabaseService _db = DatabaseService.instance;
+  @override
+  void initState() {
+    super.initState();
+    _initializeData();
+  }
 
+  Future<void> _initializeData() async {
+    await _fetchTransactions();
+    await _calculateSummary();
+  }
 
-  //data
-  final List<Map<String, dynamic>> transactions = <Map<String, dynamic>>[
-    {
-      'date': 'Jan 01, Friday',
-      'items': [
-        {'icon': Icons.coffee, 'label': 'Coffee', 'mode': 'Wallet', 'amount': -15.00},
-        {'icon': Icons.local_gas_station, 'label': 'Fuel', 'mode': 'Card', 'amount': -50.00},
-        {'icon': Icons.shopping_basket, 'label': 'Groceries', 'mode': 'Wallet', 'amount': -75.00},
-        {'icon': Icons.restaurant, 'label': 'Dinner', 'mode': 'Card', 'amount': -120.00},
-      ]
-    },
-    {
-      'date': 'Dec 31, Thursday',
-      'items': [
-        {'icon': Icons.local_bar, 'label': 'Bar', 'mode': 'Card', 'amount': -100.00},
-        {'icon': Icons.movie, 'label': 'Cinema', 'mode': 'Wallet', 'amount': -20.00},
-        {'icon': Icons.shopping_cart, 'label': 'Online Shopping', 'mode': 'Card', 'amount': -200.00},
-      ]
-    },
-    {
-      'date': 'Dec 30, Wednesday',
-      'items': [
-        {'icon': Icons.fitness_center, 'label': 'Gym Membership', 'mode': 'Card', 'amount': -40.00},
-        {'icon': Icons.book, 'label': 'Books', 'mode': 'Wallet', 'amount': -30.00},
-        {'icon': Icons.restaurant_menu, 'label': 'Lunch', 'mode': 'Wallet', 'amount': -25.00},
-      ]
-    },
-    {
-      'date': 'Dec 29, Tuesday',
-      'items': [
-        {'icon': Icons.home_repair_service, 'label': 'Repair Service', 'mode': 'Card', 'amount': -150.00},
-        {'icon': Icons.cake, 'label': 'Birthday Cake', 'mode': 'Wallet', 'amount': -50.00},
-        {'icon': Icons.sports, 'label': 'Sports Equipment', 'mode': 'Card', 'amount': -100.00},
-      ]
-    },
-    {
-      'date': 'Dec 28, Monday',
-      'items': [
-        {'icon': Icons.hotel, 'label': 'Hotel Stay', 'mode': 'Card', 'amount': -300.00},
-        {'icon': Icons.train, 'label': 'Train Ticket', 'mode': 'Wallet', 'amount': -80.00},
-        {'icon': Icons.flight, 'label': 'Flight Ticket', 'mode': 'Card', 'amount': -500.00},
-      ]
-    },
-    {
-      'date': 'Dec 27, Sunday',
-      'items': [
-        {'icon': Icons.pets, 'label': 'Pet Supplies', 'mode': 'Wallet', 'amount': -60.00},
-        {'icon': Icons.local_hospital, 'label': 'Medicine', 'mode': 'Card', 'amount': -45.00},
-        {'icon': Icons.bakery_dining, 'label': 'Bakery', 'mode': 'Wallet', 'amount': -20.00},
-      ]
+  Future<void> _calculateSummary() async {
+    try {
+      final db = await DatabaseService.instance.database;
+      if (db == null) throw Exception('Database not initialized');
+
+      final startDate = DateTime(_selectedDate.year, _selectedDate.month, 1);
+      final endDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+
+      final monthRecords = await db.query(
+        'records',
+        where: 'date BETWEEN ? AND ?',
+        whereArgs: [startDate.toIso8601String(), endDate.toIso8601String()],
+      );
+
+      double monthExpense = 0.0, monthIncome = 0.0;
+      for (var record in monthRecords) {
+        final amount = record['amount'] as double;
+        amount < 0 ? monthExpense += amount.abs() : monthIncome += amount;
+      }
+
+      setState(() {
+        _expense = monthExpense;
+        _income = monthIncome;
+        _total = monthIncome - monthExpense;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
     }
-  ];
+  }
 
+  Future<void> _fetchTransactions() async {
+    try {
+      final db = await DatabaseService.instance.database;
+      if (db == null) throw Exception('Database not initialized');
 
-  double expense = 4853.72;
-  double income = 8700.00;
-  double total = 3846.28;
+      final records = await db.query(
+        'records',
+        orderBy: 'date DESC, time DESC',
+      );
+      final categories = await db.query('categories');
+      final accounts = await db.query('account');
+
+      Map<String, List<Map<String, dynamic>>> grouped = {};
+
+      for (var record in records) {
+        final category = categories.firstWhere(
+              (c) => c['categorie_id'] == record['category_id'],
+          orElse: () => {},
+        );
+        final account = accounts.firstWhere(
+              (a) => a['account_id'] == record['account_id'],
+          orElse: () => {},
+        );
+
+        if (category.isNotEmpty && account.isNotEmpty) {
+          final dateStr = record['date'] as String?;
+          if (dateStr == null) continue;
+
+          final date = DateTime.tryParse(dateStr);
+          if (date == null) continue;
+
+          final formattedDate = _formatDate(date);
+
+          if (!grouped.containsKey(formattedDate)) {
+            grouped[formattedDate] = [];
+          }
+
+          grouped[formattedDate]!.add({
+            'record_id': record['record_id'],
+            'icon': Icons.category,
+            'label': category['name'],
+            'mode': account['name'],
+            'amount': record['amount'],
+            'description': record['description'],
+            'category_id': category['categorie_id'],
+            'account_id': account['account_id'],
+            'time': record['time'],
+          });
+        }
+      }
+
+      setState(() {
+        _groupedTransactions = grouped;
+        _sortedDates = grouped.keys.toList()
+          ..sort((a, b) => b.compareTo(a));
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final day = date.day;
+    final suffix = (day % 10 == 1 && day != 11)
+        ? 'st'
+        : (day % 10 == 2 && day != 12)
+        ? 'nd'
+        : (day % 10 == 3 && day != 13)
+        ? 'rd'
+        : 'th';
+    final month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.month - 1];
+    final weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.weekday - 1];
+    return '${day}${suffix} $month, $weekday';
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-
-      //BODY with summary and actual expense record
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
-          //Summary Container
           Container(
             decoration: BoxDecoration(
               color: Colors.teal.shade50,
@@ -97,82 +152,109 @@ class RecordsState extends State<Records> {
                 ),
               ],
             ),
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.arrow_back_ios),  //left arrow
-                    SizedBox(width: 70,),
-                    Column(
-                      children: [
-                        Text(
-                          'January, 2021',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios),
+                      onPressed: () {
+                        setState(() {
+                          _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1);
+                          _groupedTransactions = {};
+                          _sortedDates = [];
+                        });
+                        _initializeData();
+                      },
                     ),
-                    SizedBox(width: 70,),
-                    Icon(Icons.arrow_forward_ios),   //right arrow
+                    Text(
+                      '${_getMonthName(_selectedDate.month)}, ${_selectedDate.year}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_forward_ios),
+                      onPressed: () {
+                        setState(() {
+                          _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1);
+                          _groupedTransactions = {};
+                          _sortedDates = [];
+                        });
+                        _initializeData();
+                      },
+                    ),
                   ],
                 ),
-                const SizedBox(height: 15,),
                 Padding(
-                  padding: const EdgeInsets.only(left: 20, right: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-
-                      //Expense
-                      Column(
-                        children: [
-                          const Text('EXPENSE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          Text(
-                            "₹${expense.toStringAsFixed(2)}",
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red),
-                          ),
-                        ],
-                      ),
-
-                      //Income
-                      Column(
-                        children: [
-                          const Text('INCOME', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          Text(
-                            "₹${income.toStringAsFixed(2)}",
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green),
-                          ),
-                        ],
-                      ),
-
-                      //Total
-                      Column(
-                        children: [
-                          const Text('TOTAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          Text(
-                            "₹${total.toStringAsFixed(2)}",
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue),
-                          ),
-                        ],
-                      ),
+                      _buildSummaryColumn('EXPENSE', _expense, Colors.red),
+                      _buildSummaryColumn('INCOME', _income, Colors.green),
+                      _buildSummaryColumn('TOTAL', _total, Colors.blue),
                     ],
                   ),
-                )
+                ),
               ],
             ),
           ),
-
           Expanded(
             child: ListView.builder(
-              itemCount: transactions.length,
-              itemBuilder: (context, index) {
-                final transaction = transactions[index];
+              itemCount: _sortedDates.length,
+              itemBuilder: (context, dateIndex) {
+                final date = _sortedDates[dateIndex];
+                final transactions = _groupedTransactions[date]!;
+
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    DateSection(transaction: transaction),
-                    RecordSection(transaction: transaction),
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "  $date",
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Divider(
+                            color: Colors.teal,
+                            height: 2,
+                            indent: 5,
+                            endIndent: 5,
+                          ),
+                        ],
+                      ),
+                    ),
+                    ...transactions.map((transaction) => GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AddExpenseScreen(
+                            isEditing: true,
+                            recordData: {
+                              'records_id': transaction['record_id'],
+                              ...transaction,
+                              'date': date,
+                            },
+                          ),
+                        ),
+                      ).then((value) {
+                        if (value == true) {
+                          setState(() {
+                            _groupedTransactions = {};
+                            _sortedDates = [];
+                          });
+                          _initializeData();
+                        }
+                      }),
+                      child: RecordSection(transaction: {'items': [transaction]}),
+                    )),
                   ],
                 );
               },
@@ -180,23 +262,35 @@ class RecordsState extends State<Records> {
           ),
         ],
       ),
-
-      //BOTTOMNAVBAR
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AddExpenseScreen()),
-          );
-        },
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AddExpenseScreen()),
+        ).then((value) {
+          if (value == true) {
+            setState(() {
+              _groupedTransactions = {};
+              _sortedDates = [];
+            });
+            _initializeData();
+          }
+        }),
         backgroundColor: Colors.teal,
-        child: const Icon(
-          Icons.add,
-          color: Colors.white,
-          size: 40,
-        ),
+        child: const Icon(Icons.add, color: Colors.white, size: 40),
       ),
-
     );
   }
+
+  Widget _buildSummaryColumn(String title, double value, Color color) => Column(
+    children: [
+      Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+      Text(
+        "₹${value.toStringAsFixed(2)}",
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+      ),
+    ],
+  );
+
+  String _getMonthName(int month) =>
+      ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1];
 }
