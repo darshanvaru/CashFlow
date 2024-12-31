@@ -20,9 +20,6 @@ class _AccountPanelState extends State<AccountPanel> {
   Future<List<Map<String, dynamic>>> _fetchCategories() async {
     final dbService = DatabaseService.instance;
     final Account = await dbService.query('account');
-    print("---------------------------------------");
-    print(Account);
-    print("---------------------------------------");
     return Account;
   }
 
@@ -55,7 +52,7 @@ class _AccountPanelState extends State<AccountPanel> {
                 } else if (snapshot.hasError) {
                   return Center(child: Text('Error: ${snapshot.error}'));
                 } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No categories available'));
+                  return const Center(child: Text('No Accounts available, add for adding any transaction'));
                 }
 
                 final accounts = snapshot.data!;

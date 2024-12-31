@@ -65,7 +65,7 @@ class _CategoryPanelState extends State<CategoryPanel> {
                 } else if (snapshot.hasError) {
                   return Center(child: Text('Error: ${snapshot.error}'));
                 } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No categories available'));
+                  return const Center(child: Text('No Categories available, add for adding any transaction'));
                 }
 
                 final categories = snapshot.data!;
