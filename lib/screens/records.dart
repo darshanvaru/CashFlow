@@ -26,47 +26,12 @@ class RecordsState extends State<Records> {
     await _calculateSummary();
   }
 
-  Future<void> _calculateSummary() async {
-    try {
-      final db = await DatabaseService.instance.database;
-      if (db == null) throw Exception('Database not initialized');
-
-      final startDate = DateTime(_selectedDate.year, _selectedDate.month, 1);
-      final endDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
-
-      final monthRecords = await db.query(
-        'records',
-        where: 'date BETWEEN ? AND ?',
-        whereArgs: [startDate.toIso8601String(), endDate.toIso8601String()],
-      );
-
-      double monthExpense = 0.0, monthIncome = 0.0;
-      for (var record in monthRecords) {
-        final amount = record['amount'] as double;
-        amount < 0 ? monthExpense += amount.abs() : monthIncome += amount;
-      }
-
-      setState(() {
-        _expense = monthExpense;
-        _income = monthIncome;
-        _total = monthIncome - monthExpense;
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
-    }
-  }
-
   Future<void> _fetchTransactions() async {
     try {
       final db = await DatabaseService.instance.database;
       if (db == null) throw Exception('Database not initialized');
 
-      final records = await db.query(
-        'records',
-        orderBy: 'date DESC, time DESC',
-      );
+      final records = await db.query('records',orderBy: 'date DESC, time DESC',);
       final categories = await db.query('categories');
       final accounts = await db.query('account');
 
@@ -121,6 +86,38 @@ class RecordsState extends State<Records> {
     }
   }
 
+  Future<void> _calculateSummary() async {
+    try {
+      final db = await DatabaseService.instance.database;
+      if (db == null) throw Exception('Database not initialized');
+
+      final startDate = DateTime(_selectedDate.year, _selectedDate.month, 1);
+      final endDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+
+      final monthRecords = await db.query(
+        'records',
+        where: 'date BETWEEN ? AND ?',
+        whereArgs: [startDate.toIso8601String(), endDate.toIso8601String()],
+      );
+
+      double monthExpense = 0.0, monthIncome = 0.0;
+      for (var record in monthRecords) {
+        final amount = record['amount'] as double;
+        amount < 0 ? monthExpense += amount.abs() : monthIncome += amount;
+      }
+
+      setState(() {
+        _expense = monthExpense;
+        _income = monthIncome;
+        _total = monthIncome - monthExpense;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   String _formatDate(DateTime date) {
     final day = date.day;
     final suffix = (day % 10 == 1 && day != 11)
@@ -132,8 +129,11 @@ class RecordsState extends State<Records> {
         : 'th';
     final month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.month - 1];
     final weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.weekday - 1];
-    return '${day}${suffix} $month, $weekday';
+    return '$day$suffix $month, $weekday';
   }
+
+  String _getMonthName(int month) =>
+      ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1];
 
   @override
   Widget build(BuildContext context) {
@@ -158,6 +158,8 @@ class RecordsState extends State<Records> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+
+                    //Left Arrow of top bar
                     IconButton(
                       icon: const Icon(Icons.arrow_back_ios),
                       onPressed: () {
@@ -169,10 +171,14 @@ class RecordsState extends State<Records> {
                         _initializeData();
                       },
                     ),
+
+                    // Month and year
                     Text(
                       '${_getMonthName(_selectedDate.month)}, ${_selectedDate.year}',
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
+
+                    //Right Arrow of top bar
                     IconButton(
                       icon: const Icon(Icons.arrow_forward_ios),
                       onPressed: () {
@@ -186,6 +192,8 @@ class RecordsState extends State<Records> {
                     ),
                   ],
                 ),
+
+                //Summary
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -200,6 +208,8 @@ class RecordsState extends State<Records> {
               ],
             ),
           ),
+
+          //Main Records
           Expanded(
             child: ListView.builder(
               itemCount: _sortedDates.length,
@@ -215,6 +225,8 @@ class RecordsState extends State<Records> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+
+                          //Date of the rcords
                           Text(
                             "  $date",
                             style: const TextStyle(
@@ -231,6 +243,8 @@ class RecordsState extends State<Records> {
                         ],
                       ),
                     ),
+
+                    //Record Tile
                     ...transactions.map((transaction) => GestureDetector(
                       onTap: () => Navigator.push(
                         context,
@@ -238,7 +252,7 @@ class RecordsState extends State<Records> {
                           builder: (context) => AddExpenseScreen(
                             isEditing: true,
                             recordData: {
-                              'records_id': transaction['record_id'],
+                              'record_id': transaction['record_id'],
                               ...transaction,
                               'date': date,
                             },
@@ -290,7 +304,4 @@ class RecordsState extends State<Records> {
       ),
     ],
   );
-
-  String _getMonthName(int month) =>
-      ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month - 1];
 }
