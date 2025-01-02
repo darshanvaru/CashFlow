@@ -63,7 +63,7 @@ class DatabaseService {
       CREATE TABLE IF NOT EXISTS categories (
         category_id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
-        type TEXT CHECK(type IN ('income', 'expense', 'transfer')) NOT NULL,
+        type TEXT CHECK(type IN ('income', 'expense')) NOT NULL,
         created_at TEXT
       )
     ''');
