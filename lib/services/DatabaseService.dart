@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -11,18 +12,27 @@ class DatabaseService {
   }
 
   Future<Database> _getDatabase() async {
+    if (_db != null) return _db!;
+
     final databasePath = join(await getDatabasesPath(), "cashflow_db.db");
 
-    return await openDatabase(
-      databasePath,
-      version: 1,
-      onCreate: _createTables,
-    );
+    try {
+      _db = await openDatabase(
+        databasePath,
+        version: 1,
+        onCreate: _createTables,
+      );
+    } catch (e) {
+      const SnackBar(content: Text("Error in Getting Database!"));
+    }
+
+    return _db!;
   }
 
   Future<void> _createTables(Database db, int version) async {
     final batch = db.batch();
 
+    // Records table
     batch.execute('''
       CREATE TABLE IF NOT EXISTS records (
         records_id INTEGER PRIMARY KEY,
@@ -30,13 +40,15 @@ class DatabaseService {
         description TEXT,
         category_id INTEGER,
         account_id INTEGER,
-        date TEXT,
-        time TEXT,
-        FOREIGN KEY (category_id) REFERENCES categories(categorie_id),
+        expense_type TEXT,
+        date DATE,
+        time TIME,
+        FOREIGN KEY (category_id) REFERENCES categories(category_id),
         FOREIGN KEY (account_id) REFERENCES account(account_id)
       )
     ''');
 
+    // Accounts table
     batch.execute('''
       CREATE TABLE IF NOT EXISTS account (
         account_id INTEGER PRIMARY KEY,
@@ -46,23 +58,25 @@ class DatabaseService {
       )
     ''');
 
+    // Categories table
     batch.execute('''
       CREATE TABLE IF NOT EXISTS categories (
-        categorie_id INTEGER PRIMARY KEY,
+        category_id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
-        type TEXT CHECK(type IN ('income', 'expense')) NOT NULL,
+        type TEXT CHECK(type IN ('income', 'expense', 'transfer')) NOT NULL,
         created_at TEXT
       )
     ''');
 
+    // Budget table
     batch.execute('''
       CREATE TABLE IF NOT EXISTS budget (
         budget_id INTEGER PRIMARY KEY,
-        categorie_id INTEGER,
+        category_id INTEGER,
         budget_amount REAL,
         spent REAL DEFAULT 0,
         created_at TEXT,
-        FOREIGN KEY (categorie_id) REFERENCES categories(categorie_id)
+        FOREIGN KEY (category_id) REFERENCES categories(category_id)
       )
     ''');
 

@@ -7,10 +7,10 @@ class CategoryPanel extends StatefulWidget {
   const CategoryPanel({super.key, required this.transactionType});
 
   @override
-  _CategoryPanelState createState() => _CategoryPanelState();
+  CategoryPanelState createState() => CategoryPanelState();
 }
 
-class _CategoryPanelState extends State<CategoryPanel> {
+class CategoryPanelState extends State<CategoryPanel> {
   late Future<List<Map<String, dynamic>>> _categoriesFuture;
 
   @override
@@ -22,16 +22,8 @@ class _CategoryPanelState extends State<CategoryPanel> {
   Future<List<Map<String, dynamic>>> _fetchCategories() async {
     final dbService = DatabaseService.instance;
     final allCategories = await dbService.query('categories'); // Fetch all categories
-    print("---------------------------------------");
-    print(allCategories);
-    print("---------------------------------------");
     final filteredCategories =
     allCategories.where((category) => category['type'] == widget.transactionType).toList();
-
-    print("---------------------------------------");
-    print(widget.transactionType);
-    print(filteredCategories);
-    print("---------------------------------------");
 
     return filteredCategories;
   }
@@ -81,9 +73,6 @@ class _CategoryPanelState extends State<CategoryPanel> {
                     return GestureDetector(
                       onTap: () {
                         Navigator.pop(context, category);
-                        print("-----------------------------------");
-                        print(category['name']);
-                        print("-----------------------------------");
                       },
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
