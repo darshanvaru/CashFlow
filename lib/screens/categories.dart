@@ -252,10 +252,6 @@ class _CategoriesState extends State<Categories> {
                         if (value == 'edit') {
                           _showEditCategoryDialog(item['categorie_id'], item['name']);
                         } else if (value == 'delete') {
-
-                          print("----------------------");
-                          print(item['categorie_id']);
-                          print("----------------------");
                           deleteCategory(item['categorie_id']);
                         }
                       },

@@ -42,16 +42,10 @@ class _AdminControlState extends State<AdminControl> {
     final db = await DatabaseService.instance.database;
     try {
       final data = await db!.query(selectedTable!);
-      print("-----------------------------------------");
-      print("Fetched Data from $selectedTable: $data");
-      print("-----------------------------------------");
       setState(() {
         tableData = data;
       });
     } catch (e) {
-      print("-----------------------------------------");
-      print("Error fetching data from $selectedTable: $e");
-      print("-----------------------------------------");
       setState(() {
         tableData = [];
       });
@@ -78,7 +72,6 @@ class _AdminControlState extends State<AdminControl> {
     final db = await DatabaseService.instance.database;
     try {
       await db!.insert(selectedTable!, data);
-      print("Data inserted successfully");
       fetchTableData(); // Refresh the data after insertion
     } catch (e) {
       print("Error inserting data into $selectedTable: $e");
