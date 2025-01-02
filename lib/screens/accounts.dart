@@ -169,15 +169,15 @@ class _AccountsState extends State<Accounts> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
+              boxShadow: const [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black,
                   blurRadius: 8,
-                  offset: const Offset(0, 4), // Shadow position
+                  offset: Offset(0, 4), // Shadow position
                 ),
               ],
               border: Border.all(
-                color: Colors.teal.withOpacity(0.3),
+                color: Colors.teal,
                 width: 1,
               ),
             ),

@@ -5,10 +5,10 @@ class AccountPanel extends StatefulWidget {
   const AccountPanel({super.key});
 
   @override
-  _AccountPanelState createState() => _AccountPanelState();
+  AccountPanelState createState() => AccountPanelState();
 }
 
-class _AccountPanelState extends State<AccountPanel> {
+class AccountPanelState extends State<AccountPanel> {
   late Future<List<Map<String, dynamic>>> _accountsFuture;
 
   @override
@@ -63,10 +63,6 @@ class _AccountPanelState extends State<AccountPanel> {
                     return GestureDetector(
                       onTap: () {
                         Navigator.pop(context, account);
-
-                        print("-----------------------------------");
-                        print(account['name']);
-                        print("-----------------------------------");
                       },
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 8.0),

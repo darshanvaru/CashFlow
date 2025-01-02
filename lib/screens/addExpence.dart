@@ -21,25 +21,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final TextEditingController displayController = TextEditingController();
   final TextEditingController noteController = TextEditingController();
 
-  String firstNumber = '';
-  String operator = '';
-  String transactionType = 'EXPENSE';
-  bool shouldResetDisplay = false;
-  bool calculationCompleted = false;
-  bool _isLoading = false;
+  String firstNumber = '', operator = '', transactionType = 'EXPENSE';
+  bool shouldResetDisplay = false, calculationCompleted = false, _isLoading = false;
+  int selectedCategoryId = 1, fromAccountId = 1, toAccountId = 1;
+  String selectedCategory = 'Category', selectedAccount = 'Account', transferAccount = 'Account';
   DateTime selectedDate = DateTime.now();
   TimeOfDay selectedTime = TimeOfDay.now();
-  int selectedCategoryId = 1;
-  int fromAccountId = 1;
-  int toAccountId = 1;
-  String selectedCategory = 'Category';
-  String selectedAccount = 'Account';
-  String transferAccount = 'Account';
 
   @override
   void initState() {
     super.initState();
     if (widget.isEditing && widget.recordData != null) {
+
       // Set initial values for editing
       displayController.text = widget.recordData!['amount'].abs().toString();
       noteController.text = widget.recordData!['description'];
@@ -696,7 +689,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 // Loading overlay
                 if (_isLoading)
                   Container(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black,
                     child: const Center(
                       child: CircularProgressIndicator(),
                     ),
