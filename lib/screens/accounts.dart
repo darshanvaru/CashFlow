@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/DatabaseService.dart';
+import '../services/ProgressNotification.dart';
 
 class Accounts extends StatefulWidget {
   const Accounts({super.key});
@@ -9,6 +10,8 @@ class Accounts extends StatefulWidget {
 }
 
 class _AccountsState extends State<Accounts> {
+  // for showing notification of success or failure
+  ProgressNotification msj = ProgressNotification();
   List<Map<String, dynamic>> accounts = [];
 
   @override
@@ -16,7 +19,6 @@ class _AccountsState extends State<Accounts> {
     super.initState();
     fetchAccounts();
   }
-
   // Fetch accounts from the database
   Future<void> fetchAccounts() async {
     final db = await DatabaseService.instance.database;
@@ -29,7 +31,8 @@ class _AccountsState extends State<Accounts> {
     });
   }
 
-  // Add new account to the database from Pop Up Widget
+  //CRUD Operations
+  // function for adding new account
   Future<void> addAccount(String name, String balance) async {
     final db = await DatabaseService.instance.database;
 
@@ -44,7 +47,44 @@ class _AccountsState extends State<Accounts> {
     fetchAccounts();
   }
 
-  // Pop Up Menu
+  //Function for deleting account
+  Future<void> deleteCategory(int account_id) async {
+    try {
+      final db = await DatabaseService.instance.database;
+      if (db == null) {
+        throw Exception("Database not initialized");
+      }
+
+      await db.delete('account', where: 'account_id = ?', whereArgs: [account_id]);
+      await fetchAccounts();
+      msj.showSuccessSnackBar("Account deleted successfully!", context);
+    } catch (e) {
+      msj.showErrorSnackBar("Failed to delete Account: $e", context);
+    }
+  }
+
+  // Function for Updating existing account
+  Future<void> editAccount(int account_id, String newName) async {
+    try {
+      final db = await DatabaseService.instance.database;
+      if (db == null) {
+        throw Exception("Database not initialized");
+      }
+
+      await db.update(
+        'account',
+        {'name': newName},
+        where: 'account_id = ?',
+        whereArgs: [account_id],
+      );
+      await fetchAccounts();
+      msj.showSuccessSnackBar("Account updated successfully!", context);
+    } catch (e) {
+    msj.showErrorSnackBar("Failed to Update Account: $e", context);
+    }
+  }
+
+  //DialogBox for adding new account
   void _showAddAccountDialog() {
     final nameController = TextEditingController();
     final balanceController = TextEditingController();
@@ -148,6 +188,93 @@ class _AccountsState extends State<Accounts> {
     );
   }
 
+  //DialogBox for Updating existing account
+  void _showEditAccountDialog(int account_id, String currentName) {
+    final accountNameController = TextEditingController(text: currentName);
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              title: const Text(
+                "Edit Account",
+                style: TextStyle(
+                  color: Colors.teal,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: TextFormField(
+                        controller: accountNameController,
+                        decoration: InputDecoration(
+                          labelText: 'Account Name',
+                          labelStyle: const TextStyle(color: Colors.teal),
+                          focusedBorder: const OutlineInputBorder(
+                            borderSide: BorderSide(color: Colors.teal),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Account name is required';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.teal),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      final accountName = accountNameController.text;
+                      editAccount(account_id, accountName);
+                      msj.showSuccessSnackBar("$accountName Updated Successfully", context);
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,16 +296,9 @@ class _AccountsState extends State<Accounts> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black,
-                  blurRadius: 8,
-                  offset: Offset(0, 4), // Shadow position
-                ),
-              ],
               border: Border.all(
                 color: Colors.teal,
-                width: 1,
+                width: 0.5,
               ),
             ),
             child: ListTile(
@@ -197,6 +317,28 @@ class _AccountsState extends State<Accounts> {
                   color: Colors.grey,
                   fontSize: 14,
                 ),
+              ),
+              trailing: PopupMenuButton(
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    _showEditAccountDialog(
+                      account['account_id'],
+                      account['name'],
+                    );
+                  } else if (value == 'delete') {
+                    deleteCategory(account['account_id']);
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Text('Edit'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete'),
+                  ),
+                ],
               ),
             ),
           );
