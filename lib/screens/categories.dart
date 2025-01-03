@@ -1,3 +1,4 @@
+import 'package:cashflow/services/ProgressNotification.dart';
 import 'package:flutter/material.dart';
 import '../services/DatabaseService.dart';
 
@@ -9,6 +10,9 @@ class Categories extends StatefulWidget {
 }
 
 class _CategoriesState extends State<Categories> {
+  // for showing notification of success or failure
+  ProgressNotification msj = ProgressNotification();
+
   List<Map<String, dynamic>> categories = [];
   bool isLoading = true;
 
@@ -18,6 +22,8 @@ class _CategoriesState extends State<Categories> {
     fetchCategories();
   }
 
+  //CRUD Operations
+  //Fetching categories
   Future<void> fetchCategories() async {
     try {
       setState(() => isLoading = true);
@@ -42,10 +48,11 @@ class _CategoriesState extends State<Categories> {
       });
     } catch (e) {
       setState(() => isLoading = false);
-      _showErrorSnackBar("Failed to load categories: $e");
+      msj.showErrorSnackBar("Failed to load categories: $e", context);
     }
   }
 
+  //Adding categories
   Future<void> addCategory(String name, String type) async {
     try {
       final db = await DatabaseService.instance.database;
@@ -69,34 +76,136 @@ class _CategoriesState extends State<Categories> {
         'created_at': DateTime.now().toIso8601String(),
       });
       await fetchCategories();
-      _showSuccessSnackBar("Category '$name' added successfully!");
+      msj.showSuccessSnackBar("Category '$name' added successfully!", context);
     } catch (e) {
-      _showErrorSnackBar("Failed to add category: $e");
+      msj.showErrorSnackBar("Failed to add category: $e", context);
     }
   }
 
-  void _showErrorSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
+  //Deleting categories
+  Future<void> deleteCategory(int id) async {
+    try {
+      final db = await DatabaseService.instance.database;
+      if (db == null) {
+        throw Exception("Database not initialized");
+      }
+
+      await db.delete('categories', where: 'category_id = ?', whereArgs: [id]);
+      await fetchCategories();
+      msj.showSuccessSnackBar("Category deleted successfully!", context);
+    } catch (e) {
+      msj.showErrorSnackBar("Failed to delete category: $e", context);
+    }
+  }
+
+  //Updating Categories
+  Future<void> editCategory(int id, String newName) async {
+    try {
+      final db = await DatabaseService.instance.database;
+      if (db == null) {
+        throw Exception("Database not initialized");
+      }
+
+      await db.update(
+        'categories',
+        {'name': newName},
+        where: 'category_id = ?',
+        whereArgs: [id],
+      );
+      await fetchCategories();
+      msj.showSuccessSnackBar("Category updated successfully!", context);
+    } catch (e) {
+      msj.showErrorSnackBar("Failed to edit category: $e", context);
+    }
+  }
+
+  //DialogBox for editing category
+  void _showEditCategoryDialog(int category_id, String currentName) {
+    final categoryNameController = TextEditingController(text: currentName);
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              title: const Text(
+                "Edit Category",
+                style: TextStyle(
+                  color: Colors.teal,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: TextFormField(
+                        controller: categoryNameController,
+                        decoration: InputDecoration(
+                          labelText: 'Category Name',
+                          labelStyle: const TextStyle(color: Colors.teal),
+                          focusedBorder: const OutlineInputBorder(
+                            borderSide: BorderSide(color: Colors.teal),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Category name is required';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.teal),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      final categoryName = categoryNameController.text.trim();
+                      editCategory(category_id, categoryName);
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  void _showSuccessSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
+  //DialogBox for adding category
   void _showAddCategoryDialog() {
     final categoryNameController = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -259,8 +368,30 @@ class _CategoriesState extends State<Categories> {
                           color: Colors.teal, size: 38),
                       title: Text(item['name']),
                       subtitle: Text(item['type']),
+                      trailing: PopupMenuButton(
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            _showEditCategoryDialog(
+                              item['category_id'],
+                              item['name'],
+                            );
+                          } else if (value == 'delete') {
+                            deleteCategory(item['category_id']);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Text('Edit'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Delete'),
+                          ),
+                        ],
+                      ),
                     );
-                  }).toList(),
+                  }),
               ],
             );
           },
